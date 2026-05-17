@@ -574,26 +574,22 @@ function showResult(html) {
 
 // ===== Claude API（サーバーレス関数経由）=====
 async function callClaude(prompt, maxTokens=1500) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/analyze', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': '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,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, maxTokens })
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
   const data = await res.json();
   const raw = data.content.map(c => c.text || '').join('');
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('parse error');
   return JSON.parse(m[0]);
 }
+
 // ===== 読書分析 =====
 async function analyze() {
   const title = document.getElementById('bookSearch').value.trim();
