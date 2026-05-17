@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yomu Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0f; color: #f0ede8; font-family: 'Noto Sans JP', sans-serif; min-height: 100vh; padding: 24px; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.logo { font-family: 'DM Mono', monospace; font-size: 18px; color: #c8a97e; }
+.logo span { font-size: 11px; color: #5a5652; margin-left: 8px; }
+.login-form { display: flex; gap: 8px; margin-bottom: 28px; }
+.secret-input { background: #161618; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #f0ede8; font-family: 'DM Mono', monospace; width: 300px; outline: none; }
+.login-btn { background: #c8a97e; color: #0a0a0f; border: none; border-radius: 8px; padding: 10px 20px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; }
+.login-btn:hover { background: #d4b88e; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-card { background: #161618; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px; }
+.stat-card.highlight { border-color: rgba(200,169,126,0.3); }
+.stat-num { font-size: 32px; font-weight: 700; color: #f0ede8; font-family: 'DM Mono', monospace; line-height: 1; margin-bottom: 6px; }
+.stat-num.accent { color: #c8a97e; }
+.stat-num.green { color: #4ade80; }
+.stat-num.blue { color: #60a5fa; }
+.stat-label { font-size: 12px; color: #5a5652; }
+
+/* Charts row */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+@media(max-width:600px) { .charts-row { grid-template-columns: 1fr; } }
+.chart-card { background: #161618; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px; }
+.chart-title { font-size: 12px; color: #5a5652; font-family: 'DM Mono', monospace; margin-bottom: 14px; letter-spacing: 0.08em; }
+
+/* Bar chart */
+.bar-group { display: flex; flex-direction: column; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 60px 1fr 40px; gap: 8px; align-items: center; }
+.bar-label { font-size: 11px; color: #8a8480; font-family: 'DM Mono', monospace; }
+.bar-track { background: rgba(255,255,255,0.05); border-radius: 99px; height: 6px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 99px; transition: width 0.8s ease; }
+.bar-val { font-size: 11px; color: #8a8480; font-family: 'DM Mono', monospace; text-align: right; }
+
+/* Donut chart */
+.donut-wrap { display: flex; align-items: center; gap: 20px; }
+.donut-legend { display: flex; flex-direction: column; gap: 8px; }
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8a8480; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* User table */
+.table-card { background: #161618; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; overflow: hidden; }
+.table-header { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.table-title { font-size: 12px; color: #5a5652; font-family: 'DM Mono', monospace; letter-spacing: 0.08em; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { padding: 10px 16px; text-align: left; font-size: 10px; color: #5a5652; font-family: 'DM Mono', monospace; letter-spacing: 0.08em; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 400; }
+td { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #8a8480; }
+tr:last-child td { border-bottom: none; }
+.plan-badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-family: 'DM Mono', monospace; }
+.plan-paid { background: rgba(200,169,126,0.15); color: #c8a97e; }
+.plan-free { background: rgba(255,255,255,0.05); color: #5a5652; }
+
+/* Loading & Error */
+.loading { text-align: center; padding: 40px; color: #5a5652; font-family: 'DM Mono', monospace; font-size: 13px; }
+.error-box { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #f87171; margin-bottom: 20px; }
+.refresh-btn { background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 6px 12px; font-size: 11px; color: #5a5652; cursor: pointer; font-family: 'DM Mono', monospace; }
+.refresh-btn:hover { border-color: #c8a97e; color: #c8a97e; }
+.last-updated { font-size: 11px; color: #5a5652; font-family: 'DM Mono', monospace; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">Yomu <span>ADMIN DASHBOARD</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="last-updated" id="lastUpdated">未取得</span>
+    <button class="refresh-btn" onclick="loadStats()">↻ 更新</button>
+  </div>
+</div>
+
+<div class="login-form" id="loginForm">
+  <input class="secret-input" type="password" id="secretInput" placeholder="管理者シークレットキーを入力" onkeydown="if(event.key==='Enter')loadStats()">
+  <button class="login-btn" onclick="loadStats()">ダッシュボードを表示</button>
+</div>
+
+<div id="errorBox" style="display:none" class="error-box"></div>
+<div id="dashboard" style="display:none">
+
+  <div class="stats-grid">
+    <div class="stat-card highlight">
+      <div class="stat-num accent" id="totalUsers">—</div>
+      <div class="stat-label">総ユーザー数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num green" id="todayUsers">—</div>
+      <div class="stat-label">本日の新規</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num blue" id="weekUsers">—</div>
+      <div class="stat-label">今週の新規</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="monthUsers">—</div>
+      <div class="stat-label">今月の新規</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num accent" id="paidUsers">—</div>
+      <div class="stat-label">有料ユーザー</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="totalBooks">—</div>
+      <div class="stat-label">総分析冊数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="avgBooks">—</div>
+      <div class="stat-label">1人あたり平均冊数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num green" id="mrr">—</div>
+      <div class="stat-label">月間収益（MRR）</div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <p class="chart-title">ユーザー推移</p>
+      <div class="bar-group" id="growthBars"></div>
+    </div>
+    <div class="chart-card">
+      <p class="chart-title">プラン比率</p>
+      <div class="donut-wrap">
+        <canvas id="donutChart" width="100" height="100"></canvas>
+        <div class="donut-legend" id="donutLegend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <p class="table-title">最近登録したユーザー（直近10件）</p>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>メールアドレス</th>
+          <th>プラン</th>
+          <th>分析冊数</th>
+          <th>登録日</th>
+        </tr>
+      </thead>
+      <tbody id="userTable">
+        <tr><td colspan="4" style="text-align:center;color:#5a5652;padding:20px">データを取得してください</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let adminSecret = '';
+
+async function loadStats() {
+  adminSecret = document.getElementById('secretInput').value.trim();
+  if (!adminSecret) { showError('シークレットキーを入力してください'); return; }
+
+  document.getElementById('errorBox').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/stats', {
+      headers: { 'X-Admin-Secret': adminSecret }
+    });
+
+    if (res.status === 403) { showError('シークレットキーが正しくありません'); return; }
+    if (!res.ok) { showError(`エラーが発生しました（${res.status}）`); return; }
+
+    const data = await res.json();
+    renderDashboard(data);
+
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('lastUpdated').textContent = '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+
+  } catch (e) {
+    showError('接続エラー: ' + e.message);
+  }
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+
+function renderDashboard(d) {
+  document.getElementById('totalUsers').textContent = d.total.toLocaleString();
+  document.getElementById('todayUsers').textContent = d.today;
+  document.getElementById('weekUsers').textContent = d.thisWeek;
+  document.getElementById('monthUsers').textContent = d.thisMonth;
+  document.getElementById('paidUsers').textContent = d.paid;
+  document.getElementById('totalBooks').textContent = d.totalBooks.toLocaleString();
+  document.getElementById('avgBooks').textContent = d.avgBooks;
+  document.getElementById('mrr').textContent = '¥' + (d.paid * 980).toLocaleString();
+
+  // 推移バー
+  const bars = [
+    { label: '今日', val: d.today, max: Math.max(d.today, 1), color: '#4ade80' },
+    { label: '今週', val: d.thisWeek, max: Math.max(d.thisWeek, 1), color: '#60a5fa' },
+    { label: '今月', val: d.thisMonth, max: Math.max(d.thisMonth, 1), color: '#c8a97e' },
+    { label: '累計', val: d.total, max: Math.max(d.total, 1), color: '#a78bfa' },
+  ];
+  const maxVal = Math.max(...bars.map(b => b.val), 1);
+  document.getElementById('growthBars').innerHTML = bars.map(b => `
+    <div class="bar-row">
+      <span class="bar-label">${b.label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(b.val/maxVal*100)}%;background:${b.color}"></div></div>
+      <span class="bar-val">${b.val}</span>
+    </div>`).join('');
+
+  // ドーナツチャート
+  drawDonut(d.paid, d.free);
+
+  // ユーザーテーブル
+  document.getElementById('userTable').innerHTML = d.recentUsers.length
+    ? d.recentUsers.map(u => `
+      <tr>
+        <td style="color:#f0ede8">${u.email}</td>
+        <td><span class="plan-badge ${u.plan === 'paid' ? 'plan-paid' : 'plan-free'}">${u.plan === 'paid' ? '有料' : '無料'}</span></td>
+        <td>${u.books || 0}冊</td>
+        <td>${u.joined}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" style="text-align:center;color:#5a5652;padding:20px">ユーザーがいません</td></tr>';
+}
+
+function drawDonut(paid, free) {
+  const canvas = document.getElementById('donutChart');
+  const ctx = canvas.getContext('2d');
+  const total = paid + free || 1;
+  const paidRatio = paid / total;
+
+  ctx.clearRect(0, 0, 100, 100);
+
+  // 背景円
+  ctx.beginPath();
+  ctx.arc(50, 50, 35, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 12;
+  ctx.stroke();
+
+  // 有料ユーザー
+  if (paidRatio > 0) {
+    ctx.beginPath();
+    ctx.arc(50, 50, 35, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * paidRatio);
+    ctx.strokeStyle = '#c8a97e';
+    ctx.lineWidth = 12;
+    ctx.stroke();
+  }
+
+  // 中央テキスト
+  ctx.fillStyle = '#f0ede8';
+  ctx.font = 'bold 14px DM Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round(paidRatio * 100) + '%', 50, 50);
+
+  document.getElementById('donutLegend').innerHTML = `
+    <div class="legend-item"><div class="legend-dot" style="background:#c8a97e"></div>有料 ${paid}人</div>
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.1)"></div>無料 ${free}人</div>`;
+}
+</script>
+</body>
+</html>
