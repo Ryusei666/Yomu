@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yomu v2 — AI読書コーチ</title>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f0e8; --surface: #fff; --surface2: #f0ebe0; --surface3: #e8e0d0;
+  --border: rgba(60,40,10,0.1); --border2: rgba(60,40,10,0.2);
+  --text: #1e1608; --text2: #6b5c3e; --text3: #a89070;
+  --accent: #7c4a18; --accent-light: #f5ede0;
+  --green: #3a6b3a; --green-light: #edf5ed;
+  --gold: #b8860b; --gold-light: #fdf8e8;
+  --blue: #1a5276; --blue-light: #eaf2fb;
+  --font-d: 'Shippori Mincho', serif; --font-m: 'DM Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-d); min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Header */
+.header { padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.logo { font-size: 22px; font-weight: 700; color: var(--accent); }
+.logo-badge { font-size: 10px; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; font-family: var(--font-m); margin-left: 6px; }
+.logo-sub { font-size: 11px; color: var(--text3); font-family: var(--font-m); margin-top: 1px; }
+.streak-badge { display: flex; align-items: center; gap: 6px; background: var(--gold-light); border: 1px solid rgba(184,134,11,0.2); border-radius: 20px; padding: 5px 12px; font-size: 12px; color: var(--gold); font-family: var(--font-m); }
+
+/* Tab nav */
+.tab-nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab-btn { flex-shrink: 0; padding: 10px 16px; font-size: 13px; font-family: var(--font-d); background: none; border: none; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap; }
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+
+/* Main */
+.main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; }
+@media(max-width:680px) { .main { grid-template-columns: 1fr; } .result-panel { border-left: none; border-top: 1px solid var(--border); } }
+.input-panel { padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; background: var(--bg); }
+.result-panel { border-left: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; background: var(--surface); }
+
+/* Tab pages */
+.tab-page { display: none; flex-direction: column; gap: 14px; }
+.tab-page.active { display: flex; }
+
+/* Fields */
+.field-label { font-size: 11px; color: var(--text3); letter-spacing: 0.1em; font-family: var(--font-m); font-weight: 500; margin-bottom: 3px; }
+.field-input { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; color: var(--text); font-family: var(--font-d); outline: none; transition: border-color 0.2s; width: 100%; }
+.field-input:focus { border-color: var(--border2); }
+.field-input::placeholder { color: var(--text3); font-size: 13px; }
+.field-area { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 14px; color: var(--text); font-family: var(--font-d); line-height: 1.85; resize: none; outline: none; width: 100%; transition: border-color 0.2s; }
+.field-area:focus { border-color: var(--border2); }
+.field-area::placeholder { color: var(--text3); font-size: 13px; }
+
+/* Search autocomplete */
+.search-wrap { position: relative; }
+.autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(60,40,10,0.1); }
+.autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--border); transition: background 0.1s; }
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover { background: var(--accent-light); }
+.autocomplete-title { font-weight: 500; color: var(--text); }
+.autocomplete-author { font-size: 12px; color: var(--text3); font-family: var(--font-m); margin-top: 2px; }
+.searching-indicator { padding: 10px 14px; font-size: 12px; color: var(--text3); font-family: var(--font-m); }
+
+/* Genre chips */
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: var(--font-d); transition: all 0.15s; }
+.chip.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Rating */
+.rating-row { display: flex; gap: 5px; }
+.star-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--border2); transition: color 0.15s; line-height: 1; }
+.star-btn.lit { color: var(--gold); }
+
+/* Buttons */
+.analyze-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 700; font-family: var(--font-d); cursor: pointer; transition: all 0.2s; width: 100%; }
+.analyze-btn:hover { background: #8b5520; transform: translateY(-1px); }
+.analyze-btn:disabled { background: var(--surface2); color: var(--text3); cursor: not-allowed; transform: none; }
+.sub-btn { background: none; border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 13px; color: var(--text2); cursor: pointer; font-family: var(--font-d); transition: all 0.15s; }
+.sub-btn:hover { background: var(--accent-light); color: var(--accent); }
+
+/* Filter bar */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px; background: var(--surface2); border-radius: 8px; }
+.filter-label { font-size: 11px; color: var(--text3); font-family: var(--font-m); }
+.filter-select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--text2); font-family: var(--font-d); outline: none; cursor: pointer; }
+.filter-clear { font-size: 11px; color: var(--accent); cursor: pointer; font-family: var(--font-m); text-decoration: underline; margin-left: auto; }
+
+/* Library cards */
+.lib-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+.lib-book-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.lib-meta { font-size: 12px; color: var(--text3); font-family: var(--font-m); display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.genre-badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--gold-light); color: var(--gold); border: 1px solid rgba(184,134,11,0.2); }
+.lib-memo { font-size: 13px; color: var(--text2); line-height: 1.7; border-top: 1px solid var(--border); padding-top: 8px; }
+.lib-actions { display: flex; gap: 6px; margin-top: 10px; }
+.lib-action-btn { font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
+.lib-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+.add-memo-area { margin-top: 8px; display: none; }
+.add-memo-area.open { display: block; }
+.share-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; align-items: center; justify-content: center; }
+.share-modal.open { display: flex; }
+.share-box { background: var(--surface); border-radius: 12px; padding: 24px; max-width: 420px; width: 90%; }
+.share-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.share-url { background: var(--surface2); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--text2); font-family: var(--font-m); word-break: break-all; margin-bottom: 12px; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Stats */
+.stat-row { display: flex; gap: 8px; }
+.stat-card { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 11px; text-align: center; }
+.stat-num { font-size: 22px; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--text3); font-family: var(--font-m); margin-top: 2px; }
+
+/* Recommend card */
+.rec-card { background: var(--blue-light); border: 1px solid rgba(26,82,118,0.15); border-radius: 10px; padding: 14px 16px; }
+.rec-heading { font-size: 11px; font-family: var(--font-m); letter-spacing: 0.1em; color: var(--blue); margin-bottom: 10px; }
+.rec-book { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-bottom: 1px solid rgba(26,82,118,0.1); }
+.rec-book:last-child { border-bottom: none; padding-bottom: 0; }
+.rec-book-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.rec-book-reason { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+/* Result states */
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text3); }
+.empty-book { font-size: 44px; opacity: 0.2; }
+.empty-text { font-size: 13px; line-height: 1.8; text-align: center; }
+.loading { display: none; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.loading.active { display: flex; }
+.loading-dots { display: flex; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes pulse { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+.loading-text { font-size: 13px; color: var(--text3); }
+.result-content { display: none; flex-direction: column; gap: 16px; }
+.result-content.active { display: flex; animation: fadeIn 0.4s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* Result blocks */
+.r-label { font-size: 11px; color: var(--text3); letter-spacing: 0.1em; font-family: var(--font-m); margin-bottom: 6px; }
+.divider { height: 1px; background: var(--border); }
+.insight-block { background: var(--accent-light); border: 1px solid rgba(124,74,24,0.15); border-radius: 8px; padding: 13px 15px; }
+.i-heading { font-size: 10px; font-family: var(--font-m); letter-spacing: 0.12em; color: var(--accent); margin-bottom: 5px; font-weight: 500; }
+.i-text { font-size: 13px; color: var(--text2); line-height: 1.85; }
+.action-block { background: var(--green-light); border: 1px solid rgba(58,107,58,0.15); border-radius: 8px; padding: 13px 15px; }
+.action-block .i-heading { color: var(--green); }
+.apply-item { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--text2); line-height: 1.7; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.apply-item:last-child { border-bottom: none; }
+.apply-num { min-width: 20px; height: 20px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+.book-rec { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 13px; margin-bottom: 6px; }
+.rec-title-text { font-size: 13px; font-weight: 700; color: var(--text); }
+.rec-author-text { font-size: 11px; color: var(--text3); font-family: var(--font-m); }
+.rec-reason-text { font-size: 12px; color: var(--text2); line-height: 1.6; margin-top: 4px; }
+
+/* Export btn */
+.export-btn { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
+.export-btn:hover { background: var(--gold-light); color: var(--gold); border-color: rgba(184,134,11,0.3); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div><span class="logo">Yomu</span><span class="logo-badge">v2</span></div>
+    <div class="logo-sub">AI読書コーチ</div>
+  </div>
+  <div class="streak-badge">
+    <span>🔥</span>
+    <span id="streakText">0日連続</span>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('read',this)">📖 読書メモ</button>
+  <button class="tab-btn" onclick="switchTab('library',this)">🗂 本棚</button>
+  <button class="tab-btn" onclick="switchTab('recommend',this)">✨ おすすめ</button>
+</div>
+
+<div class="main">
+  <div class="input-panel">
+
+    <!-- 読書メモタブ -->
+    <div class="tab-page active" id="tab-read">
+
+      <div>
+        <p class="field-label">本を検索（タイトルを入力）</p>
+        <div class="search-wrap">
+          <input class="field-input" id="bookSearch" type="text" placeholder="例：ゼロ・トゥ・ワン" autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
+          <div class="autocomplete-list" id="autocompleteList" style="display:none"></div>
+        </div>
+      </div>
+
+      <div>
+        <p class="field-label">著者名</p>
+        <input class="field-input" id="bookAuthor" type="text" placeholder="例：ピーター・ティール（検索で自動入力）">
+      </div>
+
+      <div>
+        <p class="field-label">ジャンル</p>
+        <div class="chip-row">
+          <span class="chip" onclick="toggleChip(this)" data-val="ビジネス">ビジネス</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="自己啓発">自己啓発</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="テクノロジー">テクノロジー</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="心理学">心理学</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="投資・お金">投資・お金</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="哲学">哲学</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="小説">小説</span>
+          <span class="chip" onclick="toggleChip(this)" data-val="その他">その他</span>
+        </div>
+      </div>
+
+      <div>
+        <p class="field-label">評価</p>
+        <div class="rating-row" id="starRow">
+          <button class="star-btn" data-val="1" onclick="setRating(1)">★</button>
+          <button class="star-btn" data-val="2" onclick="setRating(2)">★</button>
+          <button class="star-btn" data-val="3" onclick="setRating(3)">★</button>
+          <button class="star-btn" data-val="4" onclick="setRating(4)">★</button>
+          <button class="star-btn" data-val="5" onclick="setRating(5)">★</button>
+        </div>
+      </div>
+
+      <div>
+        <p class="field-label">気づき・印象に残ったこと</p>
+        <textarea class="field-area" id="memoInput" rows="5" placeholder="例：「競争を避けて独占を目指せ」という言葉が刺さった。副業でも差別化できないと消耗戦になる気がした。"></textarea>
+      </div>
+
+      <div>
+        <p class="field-label">今の自分の悩み・状況（任意）</p>
+        <textarea class="field-area" id="contextInput" rows="3" placeholder="例：副業を始めたいが何から手をつければいいかわからない。"></textarea>
+      </div>
+
+      <button class="analyze-btn" id="analyzeBtn" onclick="analyze()">📖 AIコーチに分析してもらう</button>
+    </div>
+
+    <!-- 本棚タブ -->
+    <div class="tab-page" id="tab-library">
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-num" id="totalBooks">0</div><div class="stat-label">冊読了</div></div>
+        <div class="stat-card"><div class="stat-num" id="avgRating">—</div><div class="stat-label">平均評価</div></div>
+        <div class="stat-card"><div class="stat-num" id="topGenreLabel">—</div><div class="stat-label">よく読む</div></div>
+      </div>
+
+      <div class="filter-bar">
+        <span class="filter-label">絞り込み：</span>
+        <select class="filter-select" id="filterRating" onchange="renderLibrary()">
+          <option value="">評価：すべて</option>
+          <option value="5">★★★★★</option>
+          <option value="4">★★★★以上</option>
+          <option value="3">★★★以上</option>
+        </select>
+        <select class="filter-select" id="filterGenre" onchange="renderLibrary()">
+          <option value="">ジャンル：すべて</option>
+          <option value="ビジネス">ビジネス</option>
+          <option value="自己啓発">自己啓発</option>
+          <option value="テクノロジー">テクノロジー</option>
+          <option value="心理学">心理学</option>
+          <option value="投資・お金">投資・お金</option>
+          <option value="哲学">哲学</option>
+          <option value="小説">小説</option>
+          <option value="その他">その他</option>
+        </select>
+        <span class="filter-clear" onclick="clearFilters()">クリア</span>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="export-btn" onclick="exportCSV()">📥 CSVで書き出す</button>
+        <button class="export-btn" onclick="exportText()">📄 テキストで書き出す</button>
+      </div>
+
+      <div id="libraryList"></div>
+    </div>
+
+    <!-- おすすめタブ -->
+    <div class="tab-page" id="tab-recommend">
+      <p style="font-size:13px;color:var(--text2);line-height:1.75">あなたのこれまでの読書履歴を分析して、次に読むべき本をAIが提案します。</p>
+      <button class="analyze-btn" id="recBtn" onclick="generateRecommend()">✨ 次の一冊をAIに提案してもらう</button>
+      <div id="recommendResult"></div>
+    </div>
+
+  </div>
+
+  <!-- 右：結果 -->
+  <div class="result-panel">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-book">📚</div>
+      <p class="empty-text">読んだ本のメモを入力して<br>分析ボタンを押してください</p>
+    </div>
+    <div class="loading" id="loadingState">
+      <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+      <p class="loading-text" id="loadingText">分析しています…</p>
+    </div>
+    <div class="result-content" id="resultContent"></div>
+  </div>
+</div>
+
+<!-- 共有モーダル -->
+<div class="share-modal" id="shareModal" onclick="closeShare(event)">
+  <div class="share-box">
+    <p class="share-title">📤 この分析を共有する</p>
+    <div class="share-url" id="shareUrl"></div>
+    <div class="share-actions">
+      <button class="sub-btn" onclick="copyShareUrl()">🔗 URLをコピー</button>
+      <button class="sub-btn" onclick="shareToX()">𝕏 Xに投稿</button>
+      <button class="sub-btn" onclick="closeShareModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== データ =====
+let library = JSON.parse(localStorage.getItem('yomu_v2') || '[]');
+let rating = 0;
+let lastResult = null;
+let searchTimeout = null;
+
+// ===== 日付・ストリーク =====
+const now = new Date();
+function calcStreak() {
+  if (!library.length) return 0;
+  const dates = [...new Set(library.map(b => b.dateKey))].sort().reverse();
+  let streak = 0;
+  let cur = new Date(); cur.setHours(0,0,0,0);
+  for (const d of dates) {
+    const bd = new Date(d);
+    const diff = Math.round((cur - bd) / 86400000);
+    if (diff <= 1) { streak++; cur = bd; }
+    else break;
+  }
+  return streak;
+}
+document.getElementById('streakText').textContent = calcStreak() + '日連続';
+
+// ===== タブ =====
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'library') renderLibrary();
+  if (name === 'recommend') document.getElementById('recommendResult').innerHTML = '';
+}
+
+// ===== 書籍検索（Google Books API）=====
+async function onSearchInput() {
+  const q = document.getElementById('bookSearch').value.trim();
+  clearTimeout(searchTimeout);
+  if (q.length < 2) { hideAutocomplete(); return; }
+  searchTimeout = setTimeout(() => searchBooks(q), 300);
+}
+
+async function searchBooks(q) {
+  const list = document.getElementById('autocompleteList');
+  list.style.display = 'block';
+  list.innerHTML = '<div class="searching-indicator">検索中…</div>';
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&langRestrict=ja&maxResults=6&printType=books`);
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) {
+      list.innerHTML = '<div class="searching-indicator">見つかりませんでした</div>'; return;
+    }
+    list.innerHTML = data.items.map(item => {
+      const info = item.volumeInfo;
+      const title = info.title || '';
+      const authors = (info.authors || []).join(', ');
+      return `<div class="autocomplete-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}')">
+        <div class="autocomplete-title">${escHtml(title)}</div>
+        <div class="autocomplete-author">${escHtml(authors) || '著者不明'}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="searching-indicator">検索に失敗しました</div>';
+  }
+}
+
+function escHtml(str) { return (str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function selectBook(title, author) {
+  document.getElementById('bookSearch').value = title;
+  document.getElementById('bookAuthor').value = author;
+  hideAutocomplete();
+}
+
+function hideAutocomplete() {
+  const list = document.getElementById('autocompleteList');
+  list.style.display = 'none';
+  list.innerHTML = '';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) hideAutocomplete();
+});
+
+// ===== チップ・評価 =====
+function toggleChip(el) { el.classList.toggle('selected'); }
+function getSelectedGenre() { return [...document.querySelectorAll('.chip.selected')].map(c => c.dataset.val).join(', '); }
+function setRating(val) {
+  rating = val;
+  document.querySelectorAll('.star-btn').forEach(b => b.classList.toggle('lit', parseInt(b.dataset.val) <= val));
+}
+
+// ===== フィルター =====
+function clearFilters() {
+  document.getElementById('filterRating').value = '';
+  document.getElementById('filterGenre').value = '';
+  renderLibrary();
+}
+
+// ===== ライブラリ描画 =====
+function renderLibrary() {
+  const ratingFilter = parseInt(document.getElementById('filterRating').value) || 0;
+  const genreFilter = document.getElementById('filterGenre').value;
+  let books = library;
+  if (ratingFilter) books = books.filter(b => (b.rating||0) >= ratingFilter);
+  if (genreFilter) books = books.filter(b => (b.genre||'').includes(genreFilter));
+
+  const total = library.length;
+  document.getElementById('totalBooks').textContent = total;
+  if (total > 0) {
+    const avg = (library.reduce((s,b)=>s+(b.rating||0),0)/total).toFixed(1);
+    document.getElementById('avgRating').textContent = avg;
+    const gc = {};
+    library.forEach(b=>(b.genre||'').split(',').forEach(g=>{g=g.trim();if(g)gc[g]=(gc[g]||0)+1;}));
+    const top = Object.entries(gc).sort((a,b)=>b[1]-a[1])[0];
+    document.getElementById('topGenreLabel').textContent = top ? top[0].slice(0,4) : '—';
+  }
+
+  const list = document.getElementById('libraryList');
+  if (books.length === 0) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">' + (library.length ? 'フィルター条件に一致する本がありません' : 'まだ記録がありません') + '</p>';
+    return;
+  }
+  list.innerHTML = books.map((b, i) => `
+    <div class="lib-card">
+      <div class="lib-book-title">${escHtml(b.title)}</div>
+      <div class="lib-meta">
+        <span>${escHtml(b.author)||'著者不明'}</span>
+        <span>${b.date||''}</span>
+        <span>${'★'.repeat(b.rating||0)}</span>
+        ${b.genre ? `<span class="genre-badge">${escHtml(b.genre.split(',')[0].trim())}</span>` : ''}
+      </div>
+      <div class="lib-memo">${escHtml(b.memo||'')}…</div>
+      ${b.extraMemos && b.extraMemos.length ? b.extraMemos.map(m=>`<div style="font-size:12px;color:var(--text3);border-top:1px solid var(--border);padding-top:6px;margin-top:6px">📝 ${escHtml(m)}</div>`).join('') : ''}
+      <div class="lib-actions">
+        <button class="lib-action-btn" onclick="toggleAddMemo(${i})">＋ メモ追加</button>
+        <button class="lib-action-btn" onclick="openShare(${i})">📤 共有</button>
+      </div>
+      <div class="add-memo-area" id="memo-area-${i}">
+        <textarea class="field-area" id="memo-input-${i}" rows="2" placeholder="後から気づいたことを追記…" style="margin-top:8px;font-size:13px"></textarea>
+        <button class="sub-btn" onclick="saveMemo(${i})" style="margin-top:6px">保存</button>
+      </div>
+    </div>`).join('');
+}
+
+function toggleAddMemo(idx) {
+  const area = document.getElementById(`memo-area-${idx}`);
+  area.classList.toggle('open');
+}
+
+function saveMemo(idx) {
+  const ratingFilter = parseInt(document.getElementById('filterRating').value)||0;
+  const genreFilter = document.getElementById('filterGenre').value;
+  let filtered = library;
+  if (ratingFilter) filtered = filtered.filter(b=>(b.rating||0)>=ratingFilter);
+  if (genreFilter) filtered = filtered.filter(b=>(b.genre||'').includes(genreFilter));
+  const book = filtered[idx];
+  if (!book) return;
+  const libIdx = library.indexOf(book);
+  const text = document.getElementById(`memo-input-${idx}`).value.trim();
+  if (!text) return;
+  if (!library[libIdx].extraMemos) library[libIdx].extraMemos = [];
+  library[libIdx].extraMemos.push(text);
+  localStorage.setItem('yomu_v2', JSON.stringify(library));
+  renderLibrary();
+}
+
+// ===== 共有 =====
+let shareBookIdx = -1;
+function openShare(idx) {
+  const ratingFilter = parseInt(document.getElementById('filterRating').value)||0;
+  const genreFilter = document.getElementById('filterGenre').value;
+  let filtered = library;
+  if (ratingFilter) filtered = filtered.filter(b=>(b.rating||0)>=ratingFilter);
+  if (genreFilter) filtered = filtered.filter(b=>(b.genre||'').includes(genreFilter));
+  const book = filtered[idx];
+  if (!book) return;
+  shareBookIdx = idx;
+  const shareText = `📚 ${book.title} / ${book.author||'著者不明'}\n評価: ${'★'.repeat(book.rating||0)}\n\n気づき: ${book.memo||''}\n\n#Yomu #読書 #AI読書コーチ`;
+  document.getElementById('shareUrl').textContent = shareText;
+  document.getElementById('shareModal').classList.add('open');
+}
+function closeShare(e) { if (e.target === document.getElementById('shareModal')) closeShareModal(); }
+function closeShareModal() { document.getElementById('shareModal').classList.remove('open'); }
+function copyShareUrl() {
+  navigator.clipboard.writeText(document.getElementById('shareUrl').textContent);
+  alert('コピーしました！');
+}
+function shareToX() {
+  const text = document.getElementById('shareUrl').textContent;
+  window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text), '_blank');
+}
+
+// ===== エクスポート =====
+function exportCSV() {
+  if (!library.length) { alert('記録がありません'); return; }
+  const header = 'タイトル,著者,ジャンル,評価,気づき,記録日';
+  const rows = library.map(b => [b.title,b.author,b.genre,b.rating,b.memo,b.date].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
+  const csv = [header,...rows].join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'yomu_library.csv'; a.click();
+}
+function exportText() {
+  if (!library.length) { alert('記録がありません'); return; }
+  const text = library.map((b,i)=>`【${i+1}】${b.title}\n著者：${b.author||'不明'} | ジャンル：${b.genre||'—'} | 評価：${'★'.repeat(b.rating||0)}\n気づき：${b.memo||''}\n記録日：${b.date||''}\n`).join('\n---\n\n');
+  const blob = new Blob([text],{type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'yomu_library.txt'; a.click();
+}
+
+// ===== ローディング =====
+function setLoading(on, msgs) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultContent').classList.remove('active');
+  document.getElementById('resultContent').innerHTML = '';
+  const ls = document.getElementById('loadingState');
+  ls.classList.toggle('active', on);
+  if (on && msgs) {
+    let i = 0;
+    window._li = setInterval(()=>{ document.getElementById('loadingText').textContent = msgs[i++%msgs.length]; }, 1800);
+  } else clearInterval(window._li);
+}
+function showResult(html) {
+  setLoading(false);
+  const rc = document.getElementById('resultContent');
+  rc.innerHTML = html; rc.classList.add('active');
+}
+
+// ===== Claude API =====
+async function callClaude(prompt, maxTokens=1500) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens: maxTokens, messages:[{role:'user',content:prompt}] })
+  });
+  const data = await res.json();
+  const raw = data.content.map(c=>c.text||'').join('');
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('parse error');
+  return JSON.parse(m[0]);
+}
+
+// ===== 読書分析 =====
+async function analyze() {
+  const title = document.getElementById('bookSearch').value.trim();
+  const author = document.getElementById('bookAuthor').value.trim();
+  const memo = document.getElementById('memoInput').value.trim();
+  const context = document.getElementById('contextInput').value.trim();
+  const genre = getSelectedGenre();
+  if (!title) { alert('本のタイトルを入力してください'); return; }
+  if (memo.length < 10) { alert('気づきをもう少し書いてください（10文字以上）'); return; }
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.textContent = '分析中…';
+  setLoading(true, ['本の内容を読んでいます…','あなたの状況と照らし合わせています…','人生への応用を考えています…','次の一冊を選んでいます…']);
+
+  const past = library.slice(0,5).map(b=>b.title).join(', ');
+  const prompt = `読書コーチとして分析してください。JSONのみ返してください。
+本:「${title}」${author?`/${author}`:''} ${genre?`[${genre}]`:''}
+評価:${'★'.repeat(rating||3)}
+メモ:${memo}
+悩み/状況:${context||'なし'}
+過去の読書:${past||'なし'}
+{
+  "coreLesson":"この本の核心メッセージ（1文）",
+  "personalApply":["応用1（具体的）","応用2（具体的）","応用3（具体的）"],
+  "thisWeekAction":"今週試せる最小アクション（1文・超具体的）",
+  "deepInsight":"より深い示唆（2文）",
+  "thinkingPattern":"読者の思考傾向・強み（2文）",
+  "nextBooks":[{"title":"次の本1","author":"著者","reason":"理由1文"},{"title":"次の本2","author":"著者","reason":"理由1文"},{"title":"次の本3","author":"著者","reason":"理由1文"}],
+  "lifeConnection":"人生・キャリアとの繋がり（2文）"
+}`;
+
+  try {
+    const r = await callClaude(prompt);
+    lastResult = { title, author, genre, memo, rating, result: r };
+
+    const applyHtml = (r.personalApply||[]).map((a,i)=>`<div class="apply-item"><div class="apply-num">${i+1}</div><span>${escHtml(a)}</span></div>`).join('');
+    const nextHtml = (r.nextBooks||[]).map(b=>`<div class="book-rec"><div class="rec-title-text">📖 ${escHtml(b.title)}</div><div class="rec-author-text">${escHtml(b.author)}</div><div class="rec-reason-text">${escHtml(b.reason)}</div></div>`).join('');
+
+    showResult(`
+      <div><p class="r-label">この本の核心</p>
+        <div class="insight-block"><p class="i-heading">CORE LESSON</p><p class="i-text" style="font-weight:500;color:var(--accent);font-size:14px">"${escHtml(r.coreLesson)}"</p></div></div>
+      <div class="divider"></div>
+      <div><p class="r-label">あなたの状況への応用</p>
+        <div style="background:var(--surface2);border-radius:8px;padding:4px 12px">${applyHtml}</div></div>
+      <div><p class="r-label">今週中に試すアクション</p>
+        <div class="action-block"><p class="i-heading">THIS WEEK</p><p class="i-text" style="font-weight:500">${escHtml(r.thisWeekAction)}</p></div></div>
+      <div class="divider"></div>
+      <div><p class="r-label">あなたの思考の強み</p>
+        <div class="insight-block"><p class="i-heading">YOUR PATTERN</p><p class="i-text">${escHtml(r.thinkingPattern)}</p></div></div>
+      <div><p class="r-label">より深い示唆</p>
+        <div class="insight-block"><p class="i-heading">DEEPER INSIGHT</p><p class="i-text">${escHtml(r.deepInsight)}</p></div></div>
+      <div><p class="r-label">人生・キャリアとの繋がり</p>
+        <div class="insight-block" style="border-color:rgba(124,74,24,0.3)"><p class="i-heading">LIFE CONNECTION</p><p class="i-text" style="color:var(--text)">${escHtml(r.lifeConnection)}</p></div></div>
+      <div class="divider"></div>
+      <div><p class="r-label">次に読むべき3冊</p>${nextHtml}</div>
+      <button class="sub-btn" onclick="openShareFromResult()" style="align-self:flex-start">📤 この分析を共有する</button>`);
+
+    saveBook(title, author, genre, memo, rating, r);
+    document.getElementById('streakText').textContent = calcStreak() + '日連続';
+  } catch(e) {
+    setLoading(false); document.getElementById('emptyState').style.display='flex';
+    alert('エラーが発生しました。もう一度お試しください。');
+  }
+  btn.disabled = false; btn.textContent = '📖 AIコーチに分析してもらう';
+}
+
+function openShareFromResult() {
+  if (!lastResult) return;
+  const { title, author, result } = lastResult;
+  const text = `📚 「${title}」${author?`/ ${author}`:''}を読みました\n\n💡 ${result.coreLesson}\n\n✅ 今週のアクション：${result.thisWeekAction}\n\n#Yomu #読書 #AI読書コーチ`;
+  document.getElementById('shareUrl').textContent = text;
+  document.getElementById('shareModal').classList.add('open');
+}
+
+// ===== 保存 =====
+function saveBook(title, author, genre, memo, rating, analysis) {
+  const d = new Date();
+  library.unshift({
+    title, author, genre, memo: memo.slice(0,60), rating,
+    date: `${d.getMonth()+1}/${d.getDate()}`,
+    dateKey: d.toISOString().slice(0,10),
+    nextBook: analysis.nextBooks?.[0]?.title||'', extraMemos: []
+  });
+  if (library.length > 100) library = library.slice(0,100);
+  localStorage.setItem('yomu_v2', JSON.stringify(library));
+}
+
+// ===== AIおすすめ =====
+async function generateRecommend() {
+  if (library.length < 2) { alert('2冊以上記録してからお試しください'); return; }
+  const btn = document.getElementById('recBtn');
+  btn.disabled = true; btn.textContent = '分析中…';
+  const resultDiv = document.getElementById('recommendResult');
+  resultDiv.innerHTML = '<p style="font-size:13px;color:var(--text3);padding:12px 0">AIが分析しています…</p>';
+
+  const summary = library.slice(0,10).map(b=>`「${b.title}」(${b.genre||'—'}, ★${b.rating||'?'})`).join(', ');
+  const prompt = `読書コーチとして、以下の読書履歴を持つ人に最適な次の3冊を提案してください。JSONのみ返してください。
+読書履歴:${summary}
+{"recommendations":[
+  {"title":"本1","author":"著者","genre":"ジャンル","reason":"なぜこの本か（2文）","match":"この人に合う理由（1文）"},
+  {"title":"本2","author":"著者","genre":"ジャンル","reason":"なぜこの本か（2文）","match":"この人に合う理由（1文）"},
+  {"title":"本3","author":"著者","genre":"ジャンル","reason":"なぜこの本か（2文）","match":"この人に合う理由（1文）"}
+],"readingPersonality":"この人の読書傾向・知的好奇心のパターンを2文で"}`;
+
+  try {
+    const r = await callClaude(prompt);
+    const recsHtml = (r.recommendations||[]).map(b=>`
+      <div style="margin-bottom:10px">
+        <div style="font-size:14px;font-weight:700;color:var(--text)">📖 ${escHtml(b.title)}</div>
+        <div style="font-size:12px;color:var(--text3);font-family:var(--font-m);margin-bottom:4px">${escHtml(b.author)} | ${escHtml(b.genre)}</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.7">${escHtml(b.reason)}</div>
+        <div style="font-size:12px;color:var(--green);margin-top:3px">✓ ${escHtml(b.match)}</div>
+      </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">');
+    resultDiv.innerHTML = `
+      <div class="rec-card" style="margin-top:12px">
+        <p class="rec-heading">あなたへのおすすめ3冊</p>
+        ${recsHtml}
+      </div>
+      <div class="insight-block" style="margin-top:10px">
+        <p class="i-heading">YOUR READING PERSONALITY</p>
+        <p class="i-text">${escHtml(r.readingPersonality)}</p>
+      </div>`;
+  } catch(e) {
+    resultDiv.innerHTML = '<p style="font-size:13px;color:var(--text3)">エラーが発生しました</p>';
+  }
+  btn.disabled = false; btn.textContent = '✨ 次の一冊をAIに提案してもらう';
+}
+
+// 初期化
+renderLibrary();
+</script>
+</body>
+</html>
