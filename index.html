@@ -337,12 +337,12 @@ function switchTab(name, btn) {
   if (name === 'recommend') document.getElementById('recommendResult').innerHTML = '';
 }
 
-// ===== 書籍検索（/api/search経由）=====
+// ===== 書籍検索（Google Books API）=====
 async function onSearchInput() {
   const q = document.getElementById('bookSearch').value.trim();
   clearTimeout(searchTimeout);
-  if (q.length < 2) { hideAutocomplete(); return; }
-  searchTimeout = setTimeout(() => searchBooks(q), 600);
+  if (q.length < 1) { hideAutocomplete(); return; }
+  searchTimeout = setTimeout(() => searchBooks(q), 400);
 }
 
 async function searchBooks(q) {
@@ -350,11 +350,38 @@ async function searchBooks(q) {
   list.style.display = 'block';
   list.innerHTML = '<div class="searching-indicator">検索中…</div>';
   try {
-    const res = await fetch('/api/search?q=' + encodeURIComponent(q));
-    if (!res.ok) throw new Error('検索に失敗しました');
-    const data = await res.json();
-    const books = data.books || [];
-    if (!books.length) {
+    // 複数クエリ形式で並行検索（日本語対応強化）
+    const queries = [
+      `intitle:${encodeURIComponent(q)}`,
+      encodeURIComponent(q)
+    ];
+    const results = await Promise.all(queries.map(query =>
+      fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5&printType=books&orderBy=relevance`)
+        .then(r => r.json()).catch(() => ({ items: [] }))
+    ));
+
+    // 重複除去してマージ
+    const seen = new Set();
+    const items = [];
+    for (const data of results) {
+      for (const item of (data.items || [])) {
+        const title = item.volumeInfo?.title || '';
+        if (title && !seen.has(title)) {
+          seen.add(title);
+          items.push(item);
+        }
+      }
+    }
+
+    // 日本語タイトルを優先ソート
+    items.sort((a, b) => {
+      const aJa = /[\u3000-\u9fff]/.test(a.volumeInfo?.title || '');
+      const bJa = /[\u3000-\u9fff]/.test(b.volumeInfo?.title || '');
+      return bJa - aJa;
+    });
+
+    if (items.length === 0) {
+      // 見つからない場合は手入力を促す
       list.innerHTML = `
         <div class="searching-indicator">候補が見つかりませんでした</div>
         <div class="autocomplete-item" onclick="selectBook('${escHtml(q)}','')">
@@ -363,11 +390,17 @@ async function searchBooks(q) {
         </div>`;
       return;
     }
-    list.innerHTML = books.map(b => `
-      <div class="autocomplete-item" onclick="selectBook('${escHtml(b.title)}','${escHtml(b.author)}')">
-        <div class="autocomplete-title">${escHtml(b.title)}</div>
-        <div class="autocomplete-author">${escHtml(b.author || '著者不明')}</div>
-      </div>`).join('');
+
+    list.innerHTML = items.slice(0, 7).map(item => {
+      const info = item.volumeInfo;
+      const title = info.title || '';
+      const authors = (info.authors || []).join(', ');
+      const publisher = info.publisher ? ` · ${info.publisher}` : '';
+      return `<div class="autocomplete-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}')">
+        <div class="autocomplete-title">${escHtml(title)}</div>
+        <div class="autocomplete-author">${escHtml(authors) || '著者不明'}${escHtml(publisher)}</div>
+      </div>`;
+    }).join('');
   } catch(e) {
     list.innerHTML = `
       <div class="searching-indicator">検索エラー</div>
