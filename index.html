@@ -3,14 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- Google Analytics -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-PK4PW7E4N0"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-PK4PW7E4N0');
-</script>
 <title>Yomu v2 — AI読書コーチ</title>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -159,6 +151,24 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 /* Export btn */
 .export-btn { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
 .export-btn:hover { background: var(--gold-light); color: var(--gold); border-color: rgba(184,134,11,0.3); }
+
+/* 本棚グリッドビュー */
+.view-toggle { display: flex; gap: 6px; }
+.view-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--text3); cursor: pointer; transition: all 0.15s; font-family: var(--font-d); }
+.view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 14px; padding: 4px 0; }
+.shelf-item { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.shelf-cover { width: 90px; height: 120px; border-radius: 4px; object-fit: cover; box-shadow: 2px 4px 8px rgba(60,40,10,0.15); transition: transform 0.2s; border: 1px solid var(--border); }
+.shelf-cover:hover { transform: translateY(-4px); }
+.shelf-placeholder { width: 90px; height: 120px; border-radius: 4px; background: linear-gradient(135deg, var(--surface2), var(--surface3)); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 2px 4px 8px rgba(60,40,10,0.1); transition: transform 0.2s; }
+.shelf-placeholder:hover { transform: translateY(-4px); }
+.shelf-title { font-size: 11px; color: var(--text2); text-align: center; line-height: 1.4; max-width: 90px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.shelf-stars { font-size: 10px; color: var(--gold); }
+.ac-item { padding: 8px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--border); transition: background 0.1s; display: flex; align-items: center; gap: 10px; }
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover { background: var(--accent-light); }
+.ac-cover { width: 32px; height: 44px; object-fit: cover; border-radius: 3px; border: 1px solid var(--border); flex-shrink: 0; background: var(--surface2); display:flex;align-items:center;justify-content:center;font-size:14px; }
+.ac-info { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -267,9 +277,15 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
         <span class="filter-clear" onclick="clearFilters()">クリア</span>
       </div>
 
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="export-btn" onclick="exportCSV()">📥 CSVで書き出す</button>
-        <button class="export-btn" onclick="exportText()">📄 テキストで書き出す</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:6px">
+          <button class="export-btn" onclick="exportCSV()">📥 CSV</button>
+          <button class="export-btn" onclick="exportText()">📄 テキスト</button>
+        </div>
+        <div class="view-toggle">
+          <button class="view-btn active" id="vListBtn" onclick="setView('list')">☰ リスト</button>
+          <button class="view-btn" id="vShelfBtn" onclick="setView('shelf')">📚 本棚</button>
+        </div>
       </div>
 
       <div id="libraryList"></div>
@@ -404,9 +420,13 @@ async function searchBooks(q) {
       const title = info.title || '';
       const authors = (info.authors || []).join(', ');
       const publisher = info.publisher ? ` · ${info.publisher}` : '';
-      return `<div class="autocomplete-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}')">
-        <div class="autocomplete-title">${escHtml(title)}</div>
-        <div class="autocomplete-author">${escHtml(authors) || '著者不明'}${escHtml(publisher)}</div>
+      const cover = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
+      return `<div class="ac-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}','${escHtml(cover)}')">
+        ${cover ? `<img class="ac-cover" src="${cover}" alt="" onerror="this.textContent='📖'">` : `<div class="ac-cover">📖</div>`}
+        <div class="ac-info">
+          <div class="autocomplete-title">${escHtml(title)}</div>
+          <div class="autocomplete-author">${escHtml(authors) || '著者不明'}${escHtml(publisher)}</div>
+        </div>
       </div>`;
     }).join('');
   } catch(e) {
@@ -421,9 +441,11 @@ async function searchBooks(q) {
 
 function escHtml(str) { return (str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function selectBook(title, author) {
+let selectedCoverUrl = '';
+function selectBook(title, author, coverUrl) {
   document.getElementById('bookSearch').value = title;
   document.getElementById('bookAuthor').value = author;
+  selectedCoverUrl = coverUrl || '';
   hideAutocomplete();
 }
 
@@ -476,6 +498,7 @@ function renderLibrary() {
     list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">' + (library.length ? 'フィルター条件に一致する本がありません' : 'まだ記録がありません') + '</p>';
     return;
   }
+  if (currentView === 'shelf') { renderShelf(books); return; }
   list.innerHTML = books.map((b, i) => `
     <div class="lib-card">
       <div class="lib-book-title">${escHtml(b.title)}</div>
@@ -680,7 +703,7 @@ function saveBook(title, author, genre, memo, rating, analysis) {
     title, author, genre, memo: memo.slice(0,60), rating,
     date: `${d.getMonth()+1}/${d.getDate()}`,
     dateKey: d.toISOString().slice(0,10),
-    nextBook: analysis.nextBooks?.[0]?.title||'', extraMemos: []
+    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: selectedCoverUrl || '', extraMemos: []
   });
   if (library.length > 100) library = library.slice(0,100);
   localStorage.setItem('yomu_v2', JSON.stringify(library));
@@ -725,6 +748,30 @@ async function generateRecommend() {
     resultDiv.innerHTML = '<p style="font-size:13px;color:var(--text3)">エラーが発生しました</p>';
   }
   btn.disabled = false; btn.textContent = '✨ 次の一冊をAIに提案してもらう';
+}
+
+// ===== ビュー切替 =====
+let currentView = 'list';
+function setView(v) {
+  currentView = v;
+  document.getElementById('vListBtn').classList.toggle('active', v === 'list');
+  document.getElementById('vShelfBtn').classList.toggle('active', v === 'shelf');
+  renderLibrary();
+}
+function renderShelf(books) {
+  const list = document.getElementById('libraryList');
+  if (!books.length) { list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">まだ記録がありません</p>'; return; }
+  list.innerHTML = '<div class="shelf-grid">' + books.map((b,i) => {
+    const stars = '★'.repeat(b.rating||0);
+    const cover = b.coverUrl ? `<img class="shelf-cover" src="${escHtml(b.coverUrl)}" alt="${escHtml(b.title)}" loading="lazy" onerror="this.outerHTML='<div class=\"shelf-placeholder\">📖</div>'">` : '<div class="shelf-placeholder">📖</div>';
+    const safeTitle = escHtml(b.title);
+    const safeMemo = escHtml((b.memo||'').slice(0,40));
+    return `<div class="shelf-item" onclick="alert('${safeTitle}\n\n${safeMemo}...')">
+      ${cover}
+      <div class="shelf-title">${safeTitle}</div>
+      <div class="shelf-stars">${stars}</div>
+    </div>`;
+  }).join('') + '</div>';
 }
 
 // 初期化
