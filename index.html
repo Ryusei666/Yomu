@@ -152,23 +152,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 .export-btn { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
 .export-btn:hover { background: var(--gold-light); color: var(--gold); border-color: rgba(184,134,11,0.3); }
 
-/* 本棚グリッドビュー */
-.view-toggle { display: flex; gap: 6px; }
-.view-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--text3); cursor: pointer; transition: all 0.15s; font-family: var(--font-d); }
-.view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 14px; padding: 4px 0; }
-.shelf-item { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
-.shelf-cover { width: 90px; height: 120px; border-radius: 4px; object-fit: cover; box-shadow: 2px 4px 8px rgba(60,40,10,0.15); transition: transform 0.2s; border: 1px solid var(--border); }
-.shelf-cover:hover { transform: translateY(-4px); }
-.shelf-placeholder { width: 90px; height: 120px; border-radius: 4px; background: linear-gradient(135deg, var(--surface2), var(--surface3)); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 2px 4px 8px rgba(60,40,10,0.1); transition: transform 0.2s; }
-.shelf-placeholder:hover { transform: translateY(-4px); }
-.shelf-title { font-size: 11px; color: var(--text2); text-align: center; line-height: 1.4; max-width: 90px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.shelf-stars { font-size: 10px; color: var(--gold); }
-.ac-item { padding: 8px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--border); transition: background 0.1s; display: flex; align-items: center; gap: 10px; }
-.ac-item:last-child { border-bottom: none; }
-.ac-item:hover { background: var(--accent-light); }
-.ac-cover { width: 32px; height: 44px; object-fit: cover; border-radius: 3px; border: 1px solid var(--border); flex-shrink: 0; background: var(--surface2); display:flex;align-items:center;justify-content:center;font-size:14px; }
-.ac-info { flex: 1; min-width: 0; }
+/* 検索候補スタイル上書き */
+.autocomplete-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.autocomplete-item:hover { background: var(--accent-light); }
 </style>
 </head>
 <body>
@@ -214,7 +200,6 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
           <div id="coverPreviewTitle" style="font-size:13px;font-weight:500;color:var(--text)"></div>
           <div id="coverPreviewAuthor" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
         </div>
-      </div>
       </div>
 
       <div>
@@ -290,9 +275,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
           <button class="export-btn" onclick="exportCSV()">📥 CSV</button>
           <button class="export-btn" onclick="exportText()">📄 テキスト</button>
         </div>
-        <div class="view-toggle">
-          <button class="view-btn active" id="vListBtn" onclick="setView('list')">☰ リスト</button>
-          <button class="view-btn" id="vShelfBtn" onclick="setView('shelf')">📚 本棚</button>
+        <div style="display:flex;gap:6px">
+          <button class="export-btn" id="vListBtn" onclick="setView('list')" style="background:var(--accent);color:#fff;border-color:var(--accent)">☰ リスト</button>
+          <button class="export-btn" id="vShelfBtn" onclick="setView('shelf')">📚 本棚</button>
         </div>
       </div>
 
@@ -337,7 +322,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 
 <script>
 // ===== ユーティリティ =====
-function toHttps(url) { return url ? url.replace('http://', 'https://') : ''; }
+function toHttps(url){return url?url.replace("http://","https://"):""}
 
 // ===== データ =====
 let library = JSON.parse(localStorage.getItem('yomu_v2') || '[]');
@@ -372,12 +357,16 @@ function switchTab(name, btn) {
   if (name === 'recommend') document.getElementById('recommendResult').innerHTML = '';
 }
 
-// ===== 書籍検索（国立国会図書館API + OpenLibrary）=====
+// ===== 書籍検索（OpenLibrary API）=====
+let searchTimeout = null;
+let selectedCoverUrl = '';
+
 async function onSearchInput() {
   const q = document.getElementById('bookSearch').value.trim();
   clearTimeout(searchTimeout);
-  if (q.length < 1) { hideAutocomplete(); return; }
-  searchTimeout = setTimeout(() => searchBooks(q), 500);
+  hideAutocomplete();
+  if (q.length < 2) return;
+  searchTimeout = setTimeout(() => searchBooks(q), 600);
 }
 
 async function searchBooks(q) {
@@ -385,51 +374,36 @@ async function searchBooks(q) {
   list.style.display = 'block';
   list.innerHTML = '<div class="searching-indicator">検索中…</div>';
   try {
-    // OpenLibrary Search API（無料・制限なし）
-    const res = await fetch(
-      'https://openlibrary.org/search.json?q=' + encodeURIComponent(q) + '&limit=8&lang=jpn',
-      { signal: AbortSignal.timeout(5000) }
-    ).then(r => r.json()).catch(() => null);
-
-    const docs = res?.docs || [];
-
-    if (docs.length === 0) {
-      list.innerHTML = '<div class="searching-indicator">候補が見つかりませんでした</div>' +
-        '<div class="ac-item" onclick="selectBook(' + JSON.stringify(q) + ','','')">' +
-        '<div class="ac-cover">📖</div>' +
-        '<div class="ac-info"><div class="autocomplete-title">「' + escHtml(q) + '」をそのまま使う</div>' +
-        '<div class="autocomplete-author">著者は手動で入力してください</div></div></div>';
+    const res = await fetch('https://openlibrary.org/search.json?q=' + encodeURIComponent(q) + '&limit=7');
+    const data = await res.json();
+    const docs = data.docs || [];
+    if (!docs.length) {
+      list.innerHTML = '<div class="searching-indicator">見つかりませんでした</div>';
       return;
     }
-
-    list.innerHTML = docs.slice(0, 7).map(doc => {
-      const title = doc.title || '';
-      const author = (doc.author_name || []).slice(0, 2).join(', ');
+    list.innerHTML = docs.map(doc => {
+      const title = (doc.title || '').replace(/'/g, '&#39;');
+      const author = ((doc.author_name || [])[0] || '').replace(/'/g, '&#39;');
       const coverId = doc.cover_i;
       const cover = coverId ? 'https://covers.openlibrary.org/b/id/' + coverId + '-M.jpg' : '';
-      const t = escHtml(title);
-      const a = escHtml(author);
-      const cv = escHtml(cover);
-      return '<div class="ac-item" onclick="selectBook(''+t+'',''+a+'',''+cv+'')">' +
-        (cover ? '<img class="ac-cover" src="'+cover+'" alt="" onerror="this.outerHTML='<div class=\"ac-cover\">📖</div>'">' : '<div class="ac-cover">📖</div>') +
-        '<div class="ac-info"><div class="autocomplete-title">' + t + '</div>' +
-        '<div class="autocomplete-author">' + (a || '著者不明') + '</div></div></div>';
+      return '<div class="autocomplete-item" onclick="selectBook(decodeURIComponent(\'' + encodeURIComponent(doc.title||'') + '\'),decodeURIComponent(\'' + encodeURIComponent((doc.author_name||[])[0]||'') + '\'),\'' + cover + '\')">'
+        + (cover ? '<img class="autocomplete-cover" src="' + cover + '" alt="" style="width:32px;height:44px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">' : '<div style="width:32px;height:44px;background:var(--surface2);border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0">📖</div>')
+        + '<div style="flex:1;min-width:0"><div class="autocomplete-title">' + escHtml(doc.title||'') + '</div>'
+        + '<div class="autocomplete-author">' + escHtml((doc.author_name||[])[0]||'著者不明') + '</div></div></div>';
     }).join('');
-
   } catch(e) {
-    list.innerHTML = '<div class="searching-indicator">検索エラー。手動で入力してください</div>';
+    list.innerHTML = '<div class="searching-indicator">検索できませんでした</div>';
   }
 }
 
 function escHtml(str) { return (str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-let selectedCoverUrl = '';
 function selectBook(title, author, coverUrl) {
   document.getElementById('bookSearch').value = title;
-  document.getElementById('bookAuthor').value = author;
+  document.getElementById('bookAuthor').value = author || '';
   selectedCoverUrl = toHttps(coverUrl || '');
   hideAutocomplete();
-  // 表紙プレビューを表示
+  // 表紙プレビュー
   const wrap = document.getElementById('coverPreviewWrap');
   if (wrap) {
     if (selectedCoverUrl) {
@@ -441,6 +415,12 @@ function selectBook(title, author, coverUrl) {
       wrap.style.display = 'none';
     }
   }
+}
+
+function selectBook(title, author) {
+  document.getElementById('bookSearch').value = title;
+  document.getElementById('bookAuthor').value = author;
+  hideAutocomplete();
 }
 
 function hideAutocomplete() {
@@ -697,7 +677,7 @@ function saveBook(title, author, genre, memo, rating, analysis) {
     title, author, genre, memo: memo.slice(0,60), rating,
     date: `${d.getMonth()+1}/${d.getDate()}`,
     dateKey: d.toISOString().slice(0,10),
-    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: toHttps(selectedCoverUrl || ''), extraMemos: []
+    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: toHttps(selectedCoverUrl||''), extraMemos: []
   });
   if (library.length > 100) library = library.slice(0,100);
   localStorage.setItem('yomu_v2', JSON.stringify(library));
@@ -744,28 +724,33 @@ async function generateRecommend() {
   btn.disabled = false; btn.textContent = '✨ 次の一冊をAIに提案してもらう';
 }
 
-// ===== ビュー切替 =====
+// ===== 本棚ビュー =====
 let currentView = 'list';
 function setView(v) {
   currentView = v;
-  document.getElementById('vListBtn').classList.toggle('active', v === 'list');
-  document.getElementById('vShelfBtn').classList.toggle('active', v === 'shelf');
+  const lb = document.getElementById('vListBtn');
+  const sb = document.getElementById('vShelfBtn');
+  if (lb) { lb.style.background = v==='list'?'var(--accent)':''; lb.style.color = v==='list'?'#fff':''; lb.style.borderColor = v==='list'?'var(--accent)':''; }
+  if (sb) { sb.style.background = v==='shelf'?'var(--accent)':''; sb.style.color = v==='shelf'?'#fff':''; sb.style.borderColor = v==='shelf'?'var(--accent)':''; }
   renderLibrary();
 }
 function renderShelf(books) {
   const list = document.getElementById('libraryList');
   if (!books.length) { list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">まだ記録がありません</p>'; return; }
-  list.innerHTML = '<div class="shelf-grid">' + books.map((b,i) => {
-    const stars = '★'.repeat(b.rating||0);
-    const cover = b.coverUrl ? `<img class="shelf-cover" src="${escHtml(b.coverUrl)}" alt="${escHtml(b.title)}" loading="lazy" onerror="this.outerHTML='<div class=\"shelf-placeholder\">📖</div>'">` : '<div class="shelf-placeholder">📖</div>';
-    const safeTitle = escHtml(b.title);
-    const safeMemo = escHtml((b.memo||'').slice(0,40));
-    return `<div class="shelf-item" onclick="alert('${safeTitle}\n\n${safeMemo}...')">
-      ${cover}
-      <div class="shelf-title">${safeTitle}</div>
-      <div class="shelf-stars">${stars}</div>
-    </div>`;
-  }).join('') + '</div>';
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:14px;padding:4px 0';
+  grid.innerHTML = books.map(b => {
+    const cover = b.coverUrl || '';
+    const coverEl = cover
+      ? '<img src="'+cover+'" alt="" style="width:90px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--border);box-shadow:2px 4px 8px rgba(60,40,10,0.15);transition:transform 0.2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''" onerror="this.outerHTML='<div style=&quot;width:90px;height:120px;background:var(--surface2);border-radius:4px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px&quot;>📖</div>'">'
+      : '<div style="width:90px;height:120px;background:var(--surface2);border-radius:4px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:2px 4px 8px rgba(60,40,10,0.1)">📖</div>';
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer" title="'+escHtml(b.title)+'">'
+      + coverEl
+      + '<div style="font-size:11px;color:var(--text2);text-align:center;line-height:1.4;max-width:90px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+escHtml(b.title)+'</div>'
+      + '<div style="font-size:10px;color:var(--gold)">'+'★'.repeat(b.rating||0)+'</div></div>';
+  }).join('');
+  list.innerHTML = '';
+  list.appendChild(grid);
 }
 
 // 初期化
