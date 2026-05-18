@@ -152,9 +152,24 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 .export-btn { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
 .export-btn:hover { background: var(--gold-light); color: var(--gold); border-color: rgba(184,134,11,0.3); }
 
-/* 検索候補スタイル上書き */
-.autocomplete-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
-.autocomplete-item:hover { background: var(--accent-light); }
+.shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:14px;padding:4px 0}
+.shelf-item{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.shelf-img{width:90px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--border);box-shadow:2px 4px 8px rgba(60,40,10,0.15);transition:transform 0.2s}
+.shelf-img:hover{transform:translateY(-4px)}
+.shelf-noimg{width:90px;height:120px;background:var(--surface2);border-radius:4px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px}
+.shelf-label{font-size:11px;color:var(--text2);text-align:center;line-height:1.4;max-width:90px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.shelf-stars{font-size:10px;color:var(--gold)}
+.view-btn{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text3);cursor:pointer;font-family:var(--font-d);transition:all 0.15s}
+.view-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ac-row{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s}
+.ac-row:hover{background:var(--accent-light)}
+.ac-row:last-child{border-bottom:none}
+.ac-thumb{width:32px;height:44px;object-fit:cover;border-radius:3px;border:1px solid var(--border);flex-shrink:0}
+.ac-noimg{width:32px;height:44px;background:var(--surface2);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.ac-info{flex:1;min-width:0}
+.ac-title{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-author{font-size:12px;color:var(--text3);font-family:var(--font-m)}
+#coverPreview{display:none;align-items:center;gap:12px;background:var(--surface2);border-radius:8px;padding:10px 12px}
 </style>
 </head>
 <body>
@@ -194,11 +209,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
         <p class="field-label">著者名</p>
         <input class="field-input" id="bookAuthor" type="text" placeholder="例：ピーター・ティール（検索で自動入力）">
       </div>
-      <div id="coverPreviewWrap" style="display:none;align-items:center;gap:12px;background:var(--surface2);border-radius:8px;padding:10px 12px">
-        <img id="coverPreviewImg" src="" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">
+      <div id="coverPreview">
+        <img id="cpImg" src="" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">
         <div>
-          <div id="coverPreviewTitle" style="font-size:13px;font-weight:500;color:var(--text)"></div>
-          <div id="coverPreviewAuthor" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+          <div id="cpTitle" style="font-size:13px;font-weight:500;color:var(--text)"></div>
+          <div id="cpAuthor" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
         </div>
       </div>
 
@@ -276,11 +291,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
           <button class="export-btn" onclick="exportText()">📄 テキスト</button>
         </div>
         <div style="display:flex;gap:6px">
-          <button class="export-btn" id="vListBtn" onclick="setView('list')" style="background:var(--accent);color:#fff;border-color:var(--accent)">☰ リスト</button>
-          <button class="export-btn" id="vShelfBtn" onclick="setView('shelf')">📚 本棚</button>
+          <button class="view-btn on" id="vL" onclick="setView('list')">☰ リスト</button>
+          <button class="view-btn" id="vS" onclick="setView('shelf')">📚 本棚</button>
         </div>
       </div>
-
       <div id="libraryList"></div>
     </div>
 
@@ -321,14 +335,71 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 </div>
 
 <script>
-// ===== ユーティリティ =====
-function toHttps(url){return url?url.replace("http://","https://"):""}
-
 // ===== データ =====
 let library = JSON.parse(localStorage.getItem('yomu_v2') || '[]');
 let rating = 0;
 let lastResult = null;
 let searchTimeout = null;
+let selectedCoverUrl = '';
+let curView = 'list';
+
+// ===== 書籍検索（/api/search経由）=====
+function onSearchInput() {
+  const q = document.getElementById('bookSearch').value.trim();
+  clearTimeout(searchTimeout);
+  const list = document.getElementById('autocompleteList');
+  list.style.display = 'none';
+  if (q.length < 2) return;
+  searchTimeout = setTimeout(() => doBookSearch(q), 600);
+}
+
+async function doBookSearch(q) {
+  const list = document.getElementById('autocompleteList');
+  list.style.display = 'block';
+  list.innerHTML = '<div class="searching-indicator">検索中…</div>';
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+    if (!res.ok) throw new Error('検索に失敗しました');
+    const data = await res.json();
+    const books = data.books || [];
+    if (!books.length) {
+      list.innerHTML = '<div class="searching-indicator">見つかりませんでした</div>';
+      return;
+    }
+    list.innerHTML = '';
+    books.forEach(b => {
+      const row = document.createElement('div');
+      row.className = 'ac-row';
+      row.innerHTML = (b.cover
+        ? '<img class="ac-thumb" src="' + escHtml(b.cover) + '" alt="" onerror="this.className='ac-noimg';this.textContent='📖'">'
+        : '<div class="ac-noimg">📖</div>')
+        + '<div class="ac-info">'
+        + '<div class="ac-title">' + escHtml(b.title) + '</div>'
+        + '<div class="ac-author">' + escHtml(b.author || '著者不明') + '</div>'
+        + '</div>';
+      row.onclick = () => pickBook(b.title, b.author, b.cover);
+      list.appendChild(row);
+    });
+  } catch(e) {
+    list.innerHTML = '<div class="searching-indicator">' + escHtml(e.message) + '</div>';
+  }
+}
+
+function pickBook(title, author, coverUrl) {
+  document.getElementById('bookSearch').value = title;
+  document.getElementById('bookAuthor').value = author || '';
+  selectedCoverUrl = coverUrl || '';
+  hideAutocomplete();
+  const cp = document.getElementById('coverPreview');
+  if (coverUrl) {
+    document.getElementById('cpImg').src = coverUrl;
+    document.getElementById('cpTitle').textContent = title;
+    document.getElementById('cpAuthor').textContent = author || '';
+    cp.style.display = 'flex';
+  } else {
+    cp.style.display = 'none';
+  }
+}
 
 // ===== 日付・ストリーク =====
 const now = new Date();
@@ -357,71 +428,6 @@ function switchTab(name, btn) {
   if (name === 'recommend') document.getElementById('recommendResult').innerHTML = '';
 }
 
-// ===== 書籍検索（OpenLibrary API）=====
-let searchTimeout = null;
-let selectedCoverUrl = '';
-
-async function onSearchInput() {
-  const q = document.getElementById('bookSearch').value.trim();
-  clearTimeout(searchTimeout);
-  hideAutocomplete();
-  if (q.length < 2) return;
-  searchTimeout = setTimeout(() => searchBooks(q), 600);
-}
-
-async function searchBooks(q) {
-  const list = document.getElementById('autocompleteList');
-  list.style.display = 'block';
-  list.innerHTML = '<div class="searching-indicator">検索中…</div>';
-  try {
-    const res = await fetch('https://openlibrary.org/search.json?q=' + encodeURIComponent(q) + '&limit=7');
-    const data = await res.json();
-    const docs = data.docs || [];
-    if (!docs.length) {
-      list.innerHTML = '<div class="searching-indicator">見つかりませんでした</div>';
-      return;
-    }
-    list.innerHTML = docs.map(doc => {
-      const title = (doc.title || '').replace(/'/g, '&#39;');
-      const author = ((doc.author_name || [])[0] || '').replace(/'/g, '&#39;');
-      const coverId = doc.cover_i;
-      const cover = coverId ? 'https://covers.openlibrary.org/b/id/' + coverId + '-M.jpg' : '';
-      return '<div class="autocomplete-item" onclick="selectBook(decodeURIComponent(\'' + encodeURIComponent(doc.title||'') + '\'),decodeURIComponent(\'' + encodeURIComponent((doc.author_name||[])[0]||'') + '\'),\'' + cover + '\')">'
-        + (cover ? '<img class="autocomplete-cover" src="' + cover + '" alt="" style="width:32px;height:44px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">' : '<div style="width:32px;height:44px;background:var(--surface2);border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0">📖</div>')
-        + '<div style="flex:1;min-width:0"><div class="autocomplete-title">' + escHtml(doc.title||'') + '</div>'
-        + '<div class="autocomplete-author">' + escHtml((doc.author_name||[])[0]||'著者不明') + '</div></div></div>';
-    }).join('');
-  } catch(e) {
-    list.innerHTML = '<div class="searching-indicator">検索できませんでした</div>';
-  }
-}
-
-function escHtml(str) { return (str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-function selectBook(title, author, coverUrl) {
-  document.getElementById('bookSearch').value = title;
-  document.getElementById('bookAuthor').value = author || '';
-  selectedCoverUrl = toHttps(coverUrl || '');
-  hideAutocomplete();
-  // 表紙プレビュー
-  const wrap = document.getElementById('coverPreviewWrap');
-  if (wrap) {
-    if (selectedCoverUrl) {
-      document.getElementById('coverPreviewImg').src = selectedCoverUrl;
-      document.getElementById('coverPreviewTitle').textContent = title;
-      document.getElementById('coverPreviewAuthor').textContent = author || '';
-      wrap.style.display = 'flex';
-    } else {
-      wrap.style.display = 'none';
-    }
-  }
-}
-
-function selectBook(title, author) {
-  document.getElementById('bookSearch').value = title;
-  document.getElementById('bookAuthor').value = author;
-  hideAutocomplete();
-}
 
 function hideAutocomplete() {
   const list = document.getElementById('autocompleteList');
@@ -472,7 +478,7 @@ function renderLibrary() {
     list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">' + (library.length ? 'フィルター条件に一致する本がありません' : 'まだ記録がありません') + '</p>';
     return;
   }
-  if (currentView === 'shelf') { renderShelf(books); return; }
+  if (curView === 'shelf') { renderShelf(books); return; }
   list.innerHTML = books.map((b, i) => `
     <div class="lib-card">
       <div class="lib-book-title">${escHtml(b.title)}</div>
@@ -677,7 +683,7 @@ function saveBook(title, author, genre, memo, rating, analysis) {
     title, author, genre, memo: memo.slice(0,60), rating,
     date: `${d.getMonth()+1}/${d.getDate()}`,
     dateKey: d.toISOString().slice(0,10),
-    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: toHttps(selectedCoverUrl||''), extraMemos: []
+    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: selectedCoverUrl||'', extraMemos: []
   });
   if (library.length > 100) library = library.slice(0,100);
   localStorage.setItem('yomu_v2', JSON.stringify(library));
@@ -724,33 +730,38 @@ async function generateRecommend() {
   btn.disabled = false; btn.textContent = '✨ 次の一冊をAIに提案してもらう';
 }
 
-// ===== 本棚ビュー =====
-let currentView = 'list';
+// ===== 本棚グリッドビュー =====
 function setView(v) {
-  currentView = v;
-  const lb = document.getElementById('vListBtn');
-  const sb = document.getElementById('vShelfBtn');
-  if (lb) { lb.style.background = v==='list'?'var(--accent)':''; lb.style.color = v==='list'?'#fff':''; lb.style.borderColor = v==='list'?'var(--accent)':''; }
-  if (sb) { sb.style.background = v==='shelf'?'var(--accent)':''; sb.style.color = v==='shelf'?'#fff':''; sb.style.borderColor = v==='shelf'?'var(--accent)':''; }
+  curView = v;
+  const vL = document.getElementById('vL');
+  const vS = document.getElementById('vS');
+  if (vL) vL.className = 'view-btn' + (v==='list'?' on':'');
+  if (vS) vS.className = 'view-btn' + (v==='shelf'?' on':'');
   renderLibrary();
 }
+
 function renderShelf(books) {
-  const list = document.getElementById('libraryList');
-  if (!books.length) { list.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">まだ記録がありません</p>'; return; }
+  const el = document.getElementById('libraryList');
+  if (!books.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:24px 0">まだ記録がありません</p>';
+    return;
+  }
   const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:14px;padding:4px 0';
-  grid.innerHTML = books.map(b => {
-    const cover = b.coverUrl || '';
-    const coverEl = cover
-      ? '<img src="'+cover+'" alt="" style="width:90px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--border);box-shadow:2px 4px 8px rgba(60,40,10,0.15);transition:transform 0.2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''" onerror="this.outerHTML='<div style=&quot;width:90px;height:120px;background:var(--surface2);border-radius:4px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px&quot;>📖</div>'">'
-      : '<div style="width:90px;height:120px;background:var(--surface2);border-radius:4px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:2px 4px 8px rgba(60,40,10,0.1)">📖</div>';
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer" title="'+escHtml(b.title)+'">'
-      + coverEl
-      + '<div style="font-size:11px;color:var(--text2);text-align:center;line-height:1.4;max-width:90px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+escHtml(b.title)+'</div>'
-      + '<div style="font-size:10px;color:var(--gold)">'+'★'.repeat(b.rating||0)+'</div></div>';
-  }).join('');
-  list.innerHTML = '';
-  list.appendChild(grid);
+  grid.className = 'shelf-grid';
+  books.forEach(b => {
+    const item = document.createElement('div');
+    item.className = 'shelf-item';
+    item.title = b.title;
+    const cv = b.coverUrl || '';
+    item.innerHTML = (cv
+      ? '<img class="shelf-img" src="' + escHtml(cv) + '" alt="" onerror="this.outerHTML='<div class=\\"shelf-noimg\\">📖</div>'">'
+      : '<div class="shelf-noimg">📖</div>')
+      + '<div class="shelf-label">' + escHtml(b.title) + '</div>'
+      + '<div class="shelf-stars">' + '★'.repeat(b.rating||0) + '</div>';
+    grid.appendChild(item);
+  });
+  el.innerHTML = '';
+  el.appendChild(grid);
 }
 
 // 初期化
