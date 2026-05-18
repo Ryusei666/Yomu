@@ -208,6 +208,14 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
         <p class="field-label">著者名</p>
         <input class="field-input" id="bookAuthor" type="text" placeholder="例：ピーター・ティール（検索で自動入力）">
       </div>
+      <div id="coverPreviewWrap" style="display:none;align-items:center;gap:12px;background:var(--surface2);border-radius:8px;padding:10px 12px">
+        <img id="coverPreviewImg" src="" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">
+        <div>
+          <div id="coverPreviewTitle" style="font-size:13px;font-weight:500;color:var(--text)"></div>
+          <div id="coverPreviewAuthor" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+        </div>
+      </div>
+      </div>
 
       <div>
         <p class="field-label">ジャンル</p>
@@ -328,6 +336,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-d); mi
 </div>
 
 <script>
+// ===== ユーティリティ =====
+function toHttps(url) { return url ? url.replace('http://', 'https://') : ''; }
+
 // ===== データ =====
 let library = JSON.parse(localStorage.getItem('yomu_v2') || '[]');
 let rating = 0;
@@ -420,7 +431,7 @@ async function searchBooks(q) {
       const title = info.title || '';
       const authors = (info.authors || []).join(', ');
       const publisher = info.publisher ? ` · ${info.publisher}` : '';
-      const cover = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
+      const cover = toHttps(info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '');
       return `<div class="ac-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}','${escHtml(cover)}')">
         ${cover ? `<img class="ac-cover" src="${cover}" alt="" onerror="this.textContent='📖'">` : `<div class="ac-cover">📖</div>`}
         <div class="ac-info">
@@ -445,8 +456,20 @@ let selectedCoverUrl = '';
 function selectBook(title, author, coverUrl) {
   document.getElementById('bookSearch').value = title;
   document.getElementById('bookAuthor').value = author;
-  selectedCoverUrl = coverUrl || '';
+  selectedCoverUrl = toHttps(coverUrl || '');
   hideAutocomplete();
+  // 表紙プレビューを表示
+  const wrap = document.getElementById('coverPreviewWrap');
+  if (wrap) {
+    if (selectedCoverUrl) {
+      document.getElementById('coverPreviewImg').src = selectedCoverUrl;
+      document.getElementById('coverPreviewTitle').textContent = title;
+      document.getElementById('coverPreviewAuthor').textContent = author || '';
+      wrap.style.display = 'flex';
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
 }
 
 function hideAutocomplete() {
@@ -703,7 +726,7 @@ function saveBook(title, author, genre, memo, rating, analysis) {
     title, author, genre, memo: memo.slice(0,60), rating,
     date: `${d.getMonth()+1}/${d.getDate()}`,
     dateKey: d.toISOString().slice(0,10),
-    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: selectedCoverUrl || '', extraMemos: []
+    nextBook: analysis.nextBooks?.[0]?.title||'', coverUrl: toHttps(selectedCoverUrl || ''), extraMemos: []
   });
   if (library.length > 100) library = library.slice(0,100);
   localStorage.setItem('yomu_v2', JSON.stringify(library));
