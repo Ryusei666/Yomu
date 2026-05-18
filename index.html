@@ -372,12 +372,12 @@ function switchTab(name, btn) {
   if (name === 'recommend') document.getElementById('recommendResult').innerHTML = '';
 }
 
-// ===== 書籍検索（Google Books API）=====
+// ===== 書籍検索（国立国会図書館API + OpenLibrary）=====
 async function onSearchInput() {
   const q = document.getElementById('bookSearch').value.trim();
   clearTimeout(searchTimeout);
   if (q.length < 1) { hideAutocomplete(); return; }
-  searchTimeout = setTimeout(() => searchBooks(q), 400);
+  searchTimeout = setTimeout(() => searchBooks(q), 500);
 }
 
 async function searchBooks(q) {
@@ -385,68 +385,39 @@ async function searchBooks(q) {
   list.style.display = 'block';
   list.innerHTML = '<div class="searching-indicator">検索中…</div>';
   try {
-    // 複数クエリ形式で並行検索（日本語対応強化）
-    const queries = [
-      `intitle:${encodeURIComponent(q)}`,
-      encodeURIComponent(q)
-    ];
-    const results = await Promise.all(queries.map(query =>
-      fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=5&printType=books&orderBy=relevance`)
-        .then(r => r.json()).catch(() => ({ items: [] }))
-    ));
+    // OpenLibrary Search API（無料・制限なし）
+    const res = await fetch(
+      'https://openlibrary.org/search.json?q=' + encodeURIComponent(q) + '&limit=8&lang=jpn',
+      { signal: AbortSignal.timeout(5000) }
+    ).then(r => r.json()).catch(() => null);
 
-    // 重複除去してマージ
-    const seen = new Set();
-    const items = [];
-    for (const data of results) {
-      for (const item of (data.items || [])) {
-        const title = item.volumeInfo?.title || '';
-        if (title && !seen.has(title)) {
-          seen.add(title);
-          items.push(item);
-        }
-      }
-    }
+    const docs = res?.docs || [];
 
-    // 日本語タイトルを優先ソート
-    items.sort((a, b) => {
-      const aJa = /[\u3000-\u9fff]/.test(a.volumeInfo?.title || '');
-      const bJa = /[\u3000-\u9fff]/.test(b.volumeInfo?.title || '');
-      return bJa - aJa;
-    });
-
-    if (items.length === 0) {
-      // 見つからない場合は手入力を促す
-      list.innerHTML = `
-        <div class="searching-indicator">候補が見つかりませんでした</div>
-        <div class="autocomplete-item" onclick="selectBook('${escHtml(q)}','')">
-          <div class="autocomplete-title">「${escHtml(q)}」をそのまま使う</div>
-          <div class="autocomplete-author">著者は手動で入力してください</div>
-        </div>`;
+    if (docs.length === 0) {
+      list.innerHTML = '<div class="searching-indicator">候補が見つかりませんでした</div>' +
+        '<div class="ac-item" onclick="selectBook(' + JSON.stringify(q) + ','','')">' +
+        '<div class="ac-cover">📖</div>' +
+        '<div class="ac-info"><div class="autocomplete-title">「' + escHtml(q) + '」をそのまま使う</div>' +
+        '<div class="autocomplete-author">著者は手動で入力してください</div></div></div>';
       return;
     }
 
-    list.innerHTML = items.slice(0, 7).map(item => {
-      const info = item.volumeInfo;
-      const title = info.title || '';
-      const authors = (info.authors || []).join(', ');
-      const publisher = info.publisher ? ` · ${info.publisher}` : '';
-      const cover = toHttps(info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '');
-      return `<div class="ac-item" onclick="selectBook('${escHtml(title)}','${escHtml(authors)}','${escHtml(cover)}')">
-        ${cover ? `<img class="ac-cover" src="${cover}" alt="" onerror="this.textContent='📖'">` : `<div class="ac-cover">📖</div>`}
-        <div class="ac-info">
-          <div class="autocomplete-title">${escHtml(title)}</div>
-          <div class="autocomplete-author">${escHtml(authors) || '著者不明'}${escHtml(publisher)}</div>
-        </div>
-      </div>`;
+    list.innerHTML = docs.slice(0, 7).map(doc => {
+      const title = doc.title || '';
+      const author = (doc.author_name || []).slice(0, 2).join(', ');
+      const coverId = doc.cover_i;
+      const cover = coverId ? 'https://covers.openlibrary.org/b/id/' + coverId + '-M.jpg' : '';
+      const t = escHtml(title);
+      const a = escHtml(author);
+      const cv = escHtml(cover);
+      return '<div class="ac-item" onclick="selectBook(''+t+'',''+a+'',''+cv+'')">' +
+        (cover ? '<img class="ac-cover" src="'+cover+'" alt="" onerror="this.outerHTML='<div class=\"ac-cover\">📖</div>'">' : '<div class="ac-cover">📖</div>') +
+        '<div class="ac-info"><div class="autocomplete-title">' + t + '</div>' +
+        '<div class="autocomplete-author">' + (a || '著者不明') + '</div></div></div>';
     }).join('');
+
   } catch(e) {
-    list.innerHTML = `
-      <div class="searching-indicator">検索エラー</div>
-      <div class="autocomplete-item" onclick="selectBook('${escHtml(q)}','')">
-        <div class="autocomplete-title">「${escHtml(q)}」をそのまま使う</div>
-        <div class="autocomplete-author">著者は手動で入力してください</div>
-      </div>`;
+    list.innerHTML = '<div class="searching-indicator">検索エラー。手動で入力してください</div>';
   }
 }
 
